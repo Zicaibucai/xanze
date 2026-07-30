@@ -1,0 +1,66 @@
+spring:
+  application:
+    name: xanze-core
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 30000
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+  jackson:
+    default-property-inclusion: non_null
+    property-naming-strategy: SNAKE_CASE
+  data:
+    redis:
+      timeout: 2s
+
+server:
+  port: 8080
+  forward-headers-strategy: framework
+  error:
+    include-message: never
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: always
+      probes:
+        enabled: true
+  health:
+    redis:
+      enabled: true
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    banner: false
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+
+xanze:
+  security:
+    jwt:
+      issuer: xanze-core
+      secret: ${XANZE_JWT_SECRET}
+      ttl: ${XANZE_JWT_TTL:PT8H}
+      secure-cookie: ${XANZE_SECURE_COOKIE:false}
+  seed:
+    enabled: ${XANZE_DEV_SEED_ENABLED:false}
+    admin-username: ${XANZE_DEV_ADMIN_USERNAME:admin}
+    admin-password: ${XANZE_DEV_ADMIN_PASSWORD:}
+    employee-username: ${XANZE_DEV_EMPLOYEE_USERNAME:employee}
+    employee-password: ${XANZE_DEV_EMPLOYEE_PASSWORD:}
+

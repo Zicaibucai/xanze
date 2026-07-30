@@ -1,0 +1,16 @@
+:root {
+  --xanze-ink: #17211b;
+  --xanze-muted: #68736c;
+  --xanze-canvas: #f3f5f2;
+  --xanze-surface: #ffffff;
+  --xanze-line: #dfe5df;
+  --xanze-green: #1f5a42;
+  --xanze-green-deep: #143d2e;
+  --xanze-green-soft: #e7f1eb;
+  --xanze-lime: #c6e36b;
+  --xanze-danger: #b42318;
+  --xanze-shadow: 0 18px 50px rgba(21, 50, 36, 0.09);
+  --xanze-radius-lg: 24px;
+  --xanze-radius-md: 16px;
+}
+

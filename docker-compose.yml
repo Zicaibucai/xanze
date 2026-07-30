@@ -1,0 +1,180 @@
+name: xanze
+
+services:
+  oceanbase:
+    build:
+      context: ./infra/oceanbase
+      args:
+        OCEANBASE_VERSION: ${OCEANBASE_VERSION:-4.3.5-lts}
+    image: xanze-oceanbase:${OCEANBASE_VERSION:-4.3.5-lts}
+    environment:
+      MODE: ${OCEANBASE_MODE:-slim}
+      OCEANBASE_MEMORY_LIMIT: ${OCEANBASE_MEMORY_LIMIT:-4G}
+      OCEANBASE_CPU_COUNT: ${OCEANBASE_CPU_COUNT:-4}
+      OB_TENANT_NAME: test
+      OB_TENANT_PASSWORD: ${OCEANBASE_TENANT_PASSWORD:-xanze_dev_ob_password}
+    volumes:
+      - oceanbase-data:/var/lib/oceanbase
+      - ./infra/oceanbase/init:/root/boot/init.d:ro
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "obclient -h127.0.0.1 -P2881 -uroot@test -p$${OB_TENANT_PASSWORD} -e 'SELECT 1' >/dev/null 2>&1",
+        ]
+      interval: 10s
+      timeout: 8s
+      retries: 45
+      start_period: 180s
+    restart: unless-stopped
+
+  redis:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  core:
+    build:
+      context: ./services/core
+      target: runtime
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://oceanbase:2881/xanze?useUnicode=true&characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia%2FShanghai
+      SPRING_DATASOURCE_USERNAME: root@test
+      SPRING_DATASOURCE_PASSWORD: ${OCEANBASE_TENANT_PASSWORD:-xanze_dev_ob_password}
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      XANZE_JWT_SECRET: ${XANZE_JWT_SECRET:-phase-01-development-signing-key-change-before-production}
+      XANZE_JWT_TTL: ${XANZE_JWT_TTL:-PT8H}
+      XANZE_DEV_SEED_ENABLED: ${XANZE_DEV_SEED_ENABLED:-true}
+      XANZE_DEV_ADMIN_USERNAME: ${XANZE_DEV_ADMIN_USERNAME:-admin}
+      XANZE_DEV_ADMIN_PASSWORD: ${XANZE_DEV_ADMIN_PASSWORD:-Admin123!}
+      XANZE_DEV_EMPLOYEE_USERNAME: ${XANZE_DEV_EMPLOYEE_USERNAME:-employee}
+      XANZE_DEV_EMPLOYEE_PASSWORD: ${XANZE_DEV_EMPLOYEE_PASSWORD:-Employee123!}
+    depends_on:
+      oceanbase:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "curl",
+          "--fail",
+          "--silent",
+          "http://localhost:8080/actuator/health",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    restart: unless-stopped
+
+  agent:
+    build:
+      context: ./services/agent
+      target: runtime
+    environment:
+      XANZE_ENV: development
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      target: runtime
+    ports:
+      - "${WEB_PORT:-13080}:80"
+    depends_on:
+      core:
+        condition: service_healthy
+      agent:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--quiet",
+          "--tries=1",
+          "--spider",
+          "http://127.0.0.1/health",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  core-test:
+    profiles: ["test"]
+    build:
+      context: ./services/core
+      target: build
+    environment:
+      MAVEN_OPTS: -Xms64m -Xmx256m -XX:MaxMetaspaceSize=192m
+    mem_limit: 768m
+    command: ["mvn", "-s", "maven-settings.xml", "-B", "test"]
+
+  agent-test:
+    profiles: ["test"]
+    build:
+      context: ./services/agent
+      target: test
+    mem_limit: 384m
+    command: ["python", "-m", "pytest", "-q"]
+
+  web-e2e:
+    profiles: ["test"]
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile.e2e
+    environment:
+      PLAYWRIGHT_BASE_URL: http://web
+      XANZE_DEV_ADMIN_USERNAME: ${XANZE_DEV_ADMIN_USERNAME:-admin}
+      XANZE_DEV_ADMIN_PASSWORD: ${XANZE_DEV_ADMIN_PASSWORD:-Admin123!}
+      XANZE_DEV_EMPLOYEE_USERNAME: ${XANZE_DEV_EMPLOYEE_USERNAME:-employee}
+      XANZE_DEV_EMPLOYEE_PASSWORD: ${XANZE_DEV_EMPLOYEE_PASSWORD:-Employee123!}
+    depends_on:
+      web:
+        condition: service_healthy
+    ipc: host
+    mem_limit: 1g
+    command: ["pnpm", "--filter", "@xanze/web", "test:e2e"]
+
+  acceptance-api:
+    profiles: ["test"]
+    image: node:22-alpine
+    working_dir: /acceptance
+    volumes:
+      - ./scripts/acceptance:/acceptance:ro
+    environment:
+      API_BASE_URL: http://web
+      XANZE_DEV_ADMIN_USERNAME: ${XANZE_DEV_ADMIN_USERNAME:-admin}
+      XANZE_DEV_ADMIN_PASSWORD: ${XANZE_DEV_ADMIN_PASSWORD:-Admin123!}
+    depends_on:
+      web:
+        condition: service_healthy
+    entrypoint: ["node", "/acceptance/phase-01-api.mjs"]
+
+volumes:
+  oceanbase-data:
+  redis-data:

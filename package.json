@@ -1,0 +1,10 @@
+{
+  "name": "xanze",
+  "private": true,
+  "packageManager": "pnpm@11.13.1",
+  "scripts": {
+    "dev:web": "pnpm --filter @xanze/web dev",
+    "build:web": "pnpm --filter @xanze/web build",
+    "test:e2e": "pnpm --filter @xanze/web test:e2e"
+  }
+}
